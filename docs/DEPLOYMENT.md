@@ -48,4 +48,5 @@ For the full guided path, use [DEMO_SCRIPT.md](DEMO_SCRIPT.md).
 
 **.github/workflows/ci.yml** tests Python 3.12 on every push and pull request.
 **.github/workflows/release.yml** publishes a GitHub Release when a **v*** tag
-is pushed. The demo tag is **v0.1.0-demo**.
+is pushed. The demo tag is **v0.1.0-demo**. The GitHub organization must allow
+GitHub-hosted Actions runners; otherwise jobs stop before any workflow step.

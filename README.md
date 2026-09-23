@@ -20,9 +20,10 @@ product audit and diagrams, see [PRODUCT_AUDIT.md](docs/PRODUCT_AUDIT.md),
 
 ## Demo release and online deployment
 
-The demo release is tagged **v0.1.0-demo**. GitHub Actions runs the automated
-test suite for pushes and pull requests. A tag matching **v*** creates a GitHub
-Release from the checked-in release notes.
+The demo release is tagged **v0.1.0-demo**. GitHub Actions workflows are
+configured to test pushes and pull requests. A tag matching **v*** creates a
+GitHub Release from the checked-in release notes when organization-hosted
+Actions runners are available.
 
 Streamlit Community Cloud deployment coordinates:
 
