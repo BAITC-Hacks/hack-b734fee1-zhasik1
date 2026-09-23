@@ -1,4 +1,8 @@
-# Current implementation and verified evidence — 2026-09-23
+# Earlier implementation verification — 2026-09-23
+
+> This records the prior Python 3.14 / 54-test pass. For the newer Python 3.12
+> implementation, 58-test result, Russian UI and IEK ML comparison, see
+> [current QA](QA_REPORT.md) and [forecast evaluation](FORECAST_EVALUATION.md).
 
 This report supersedes the earlier root-app scaffold/9-test reports without
 deleting them. The implemented entry point is `frontend/app.py`; backend code

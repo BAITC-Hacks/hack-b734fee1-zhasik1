@@ -14,7 +14,7 @@ def clean_demand(events, exclude_outliers=False, decisions=(), as_of=None, detec
     """
     df = events.copy()
     if df.empty:
-        return df.assign(candidate=False, outlier=False, clean_quantity=pd.Series(dtype=float))
+        return df.assign(candidate=False, outlier=False, clean_quantity=pd.Series(dtype=float), forecast_quantity=pd.Series(dtype=float))
     for col, default in {"supplier":"synthetic", "sku":"synthetic", "document":"", "event_id":"", "unit":"pcs"}.items():
         if col not in df:
             df[col] = default
@@ -39,9 +39,31 @@ def clean_demand(events, exclude_outliers=False, decisions=(), as_of=None, detec
         threshold = np.maximum(threshold, np.expm1(med) * 10)
         docs.loc[group.index, "threshold"] = threshold
     if not docs.empty:
+        # Optional anonymized-client concentration is a separate causal signal.
+        # No client identity is invented when the source column is absent.
+        docs["client_candidate"] = False
+        docs["client_threshold"] = np.nan
+        if "client_id_anonymized" in df:
+            identities = df.groupby(group_cols, dropna=False).client_id_anonymized.agg(
+                lambda s: s.dropna().iloc[0] if len(s.dropna().unique()) == 1 else None
+            ).reset_index()
+            docs = docs.merge(identities, on=group_cols, how="left", validate="one_to_one")
+            for _, group in docs.groupby(KEY, sort=False):
+                ordered = group.sort_values("date")
+                prior = ordered.set_index("date").quantity.rolling("60D", closed="left", min_periods=5)
+                med, total = prior.median().to_numpy(), prior.sum().to_numpy()
+                limit = np.maximum(5 * med, 0.5 * total)
+                qty = ordered.quantity.to_numpy()
+                concentrated = qty / (total + qty) > 0.6
+                flagged = ordered.client_id_anonymized.notna().to_numpy() & concentrated & (qty > limit)
+                docs.loc[ordered.index, "client_candidate"] = flagged
+                docs.loc[ordered.index, "client_threshold"] = np.where(flagged, limit, np.nan)
+        docs["threshold"] = docs[["threshold", "client_threshold"]].min(axis=1, skipna=True)
         doc_flags = docs.rename(columns={"quantity":"document_quantity"})
-        df = df.drop(columns="threshold").merge(doc_flags[group_cols + ["threshold", "document_quantity"]], on=group_cols, how="left", validate="many_to_one")
-        df["candidate"] = (df.document_quantity > df.threshold) & (df.quantity > 0)
+        df = df.drop(columns="threshold").merge(doc_flags[group_cols + ["threshold", "document_quantity", "client_candidate"]], on=group_cols, how="left", validate="many_to_one")
+        df["candidate"] = ((df.document_quantity > df.threshold) | df.client_candidate.eq(True)) & (df.quantity > 0)
+    else:
+        df["client_candidate"] = False
     df["outlier"] = df.candidate
     df["is_return"] = df.quantity < 0
     df["clean_quantity"] = df.quantity.where(df.quantity >= 0)  # returns are not negative demand
@@ -57,6 +79,13 @@ def clean_demand(events, exclude_outliers=False, decisions=(), as_of=None, detec
     if exclude_outliers:
         df.loc[df.candidate, "clean_quantity"] = 0.0
         df["scenario"] = "hypothetical candidate removal"
+    # Keep the reviewed/raw series intact. Until reviewed, cap only the
+    # forecasting contribution of a candidate document at its causal limit.
+    share = df.quantity / df.document_quantity.replace(0, np.nan)
+    cap = df.threshold * share
+    df["forecast_quantity"] = df.clean_quantity.astype(float)
+    unreviewed = df.candidate & df.decision.eq("unreviewed") & cap.notna()
+    df.loc[unreviewed, "forecast_quantity"] = np.minimum(df.loc[unreviewed, "clean_quantity"], cap.loc[unreviewed])
     return df
 
 
@@ -64,14 +93,14 @@ def compensate_stockouts(cleaned, intervals, as_of):
     """Impute once per confirmed day from prior available calendar days only."""
     df = cleaned.copy()
     dates = pd.to_datetime(df.date)
-    daily = df.groupby(dates.dt.normalize()).clean_quantity.sum(min_count=1)
+    daily = df.groupby(dates.dt.normalize()).forecast_quantity.sum(min_count=1)
     additions = {}
     notes = []
     for raw in intervals:
         item = Stockout.model_validate(raw)
         if item.confirmed_at > as_of:
             continue
-        prior = daily.loc[(daily.index < pd.Timestamp(item.start)) & (daily.index >= pd.Timestamp(item.start) - pd.Timedelta(days=60))]
+        prior = daily.loc[(daily.index < pd.Timestamp(item.start)) & (daily.index >= pd.Timestamp(item.start - timedelta(days=60)))]
         if prior.empty or prior.notna().sum() < 3:
             notes.append("Confirmed stockout lacks prior available history; no compensation")
             continue
@@ -87,9 +116,9 @@ def compensate_stockouts(cleaned, intervals, as_of):
 
 
 def monthly_history(events, as_of, decisions=(), stockouts=(), monthly_2024=None):
-    # Candidate detection cannot change demand without a manager decision;
-    # avoid recalculating expensive rolling candidate flags in every backtest fold.
-    clean = clean_demand(events, decisions=decisions, as_of=as_of, detect_candidates=False)
+    # Rebuild causal anomaly limits at every forecast origin; future rows are
+    # excluded before any threshold is computed.
+    clean = clean_demand(events, decisions=decisions, as_of=as_of)
     daily, notes = compensate_stockouts(clean, stockouts, as_of)
     series = daily.groupby(daily.index.to_period("M")).sum(min_count=1)
     # 2025+ transactional history; 2024 is a separate monthly source, never overlapped.
@@ -143,6 +172,9 @@ def forecast_month(series, target, method="seasonal", factors=None, policy=None)
 def forecast_demand(events, snapshot, days, policy=None, decisions=(), stockouts=(), monthly=None, method=None):
     policy = policy or Policy()
     method = method or policy.forecast_method
+    auto_fallback = method == "auto"
+    if method == "auto":
+        method = "seasonal"  # no source-bound report is available at this low-level API
     series, notes = monthly_history(events, snapshot, decisions, stockouts, monthly)
     factors, note = seasonal_profile(series, snapshot)
     if policy.growth_mode == "file":
@@ -150,13 +182,15 @@ def forecast_demand(events, snapshot, days, policy=None, decisions=(), stockouts
     elif method == "mean3":
         note = "Three-month mean baseline selected; seasonal factors not applied"
     notes += [note, "Current partial month excluded", "Absent months stay missing; estimates use observed months", "Uniform demand within calendar month", "Lead/review/buffer are scenario assumptions"]
+    if auto_fallback:
+        notes.append("Auto requested without source-bound evaluation at this API; seasonal fallback")
     if policy.growth_mode == "file":
         notes.append("File growth applied once to corresponding previous-year month; current level not multiplied")
     elif method == "seasonal":
         notes.append("Recent weighted level retains sustained growth; no extra trend multiplier")
     else:
         notes.append("Recent completed-month mean; no extra trend multiplier")
-    dates = pd.date_range(pd.Timestamp(snapshot) + pd.Timedelta(days=1), periods=days)
+    dates = pd.date_range(pd.Timestamp(snapshot + timedelta(days=1)), periods=days)
     predictions = {m: forecast_month(series, m, method, factors, policy) for m in dates.to_period("M").unique()}
     values = [predictions[d.to_period("M")] / calendar.monthrange(d.year, d.month)[1] for d in dates]
     if policy.hypothetical_stockout_days:

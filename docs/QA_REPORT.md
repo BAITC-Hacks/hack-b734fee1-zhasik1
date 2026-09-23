@@ -1,37 +1,52 @@
-# QOR integration QA report (Stage 8)
+# QOR current QA — 23 September 2026
 
-> Historical root-app report retained. The current backend/frontend MVP and
-> 54-test verification supersede the results below:
-> [Current implementation evidence](IMPLEMENTATION_VERIFICATION.md).
-> Correction: IEK.zip was subsequently found in Downloads; real SE remains missing.
+## Commands and actual results
 
-**Executed:** 2026-09-23, Windows PowerShell, Python virtual environment.
-
-## Commands and observed results
-
-| Command | Result |
+| Command / check | Result |
 |---|---|
-| `.\\venv\\Scripts\\python.exe -m pytest -q` | `9 passed in 0.58s` |
-| Streamlit `AppTest.from_file('app.py').run(timeout=15)` | `app_exceptions=0`, `tabs=4` |
-| `streamlit run app.py --server.headless true --server.port 8501` plus `Invoke-WebRequest http://localhost:8501` | server launched; HTTP `200` |
-| `py -3 scripts/model_probe.py` | exit `2`: missing endpoint/model/key variables; no network model call was made |
+| Clean Python 3.12 `pip install -e '.[test]'` | Completed with Streamlit 1.64.0, pandas 2.3.3, scikit-learn 1.9.1 |
+| `runtime\venv312\Scripts\python.exe -m pytest -q` | **58 passed** in 10.64 s; no warnings |
+| `scripts/train_forecast.py --iek C:\Users\Kuralai\Downloads\IEK.zip --max-skus 100` | 1,597 causal panel rows; 876 held-out method predictions; 44.294 s; source hash unchanged |
+| `scripts/smoke_real_ui.py` | Real IEK import, demand/evaluation, missing-stock gate and 7/14/30 scenarios PASS; zero AppTest exceptions; no real approval/export |
+| `scripts/verify_project.py --iek ... --output runtime/verification312.json` | 171,603 real IEK transactions; 22.78 s import; original hash unchanged; default SKU `200400085_` remains `needs_stock_input` with null quantity |
+| Streamlit `frontend/app.py` at `127.0.0.1:8511` | Server started; health 200 / `ok`, page 200 |
+| `scripts/model_probe.py` | No network call; missing `QOR_MODEL_ENDPOINT`, `QOR_MODEL_ID`, `QOR_MODEL_API_KEY` |
+| Desktop/mobile pixel review | Not completed: computer-use inventory returned no available browsers; no new screenshot is claimed |
 
-## Requirement disposition
+The automated tests cover source-key preservation and duplicate joins, missing
+versus zero IEK stock, returns, causal one-off and synthetic single-client
+spikes, confirmed/synthetic stockout uplift, future-label leakage, dated ETA
+and early shortage, MOQ versus pack, unit mismatch, reasoned edit, state
+transition and reopened formula-safe CSV/XLSX. AppTest covers the landing route
+and a synthetic manager workflow. It does not prove the real SE adapter against
+the missing original workbook.
 
-| Area | Result | Evidence |
-|---|---|---|
-| Deterministic demand / planning | Pass for tested synthetic cases | 9 pytest tests |
-| ETA arrives only on its date, pre-lead shortage | Pass | `test_late_inbound_does_not_prevent_expedite` |
-| MOQ / pack rounding reference | Pass | `test_reference_eta_and_pack`: raw 100, rounded 120 |
-| Unknown IEK stock distinct from zero | Pass | `test_unknown_stock_not_zero` |
-| SKU text, zero versus missing, future-month exclusion | Pass | data/demand tests |
-| Manager workflow and export UI | Partial | UI renders; interactive approval/export should be rechecked with real source rows |
-| Real IEK / SE import and source-to-export trace | Blocked | original archives are absent from this workspace |
-| Live HackAlem in-product model and tools | Blocked | no organizer endpoint, authorized model ID, or participant credential |
+## Real source trace and forecast selection
 
-## Remaining source-data limits
+Real IEK SKU `200400085_` in meters traces through imported monthly and
+transaction records, source reconciliation, forecast and a blocked planning
+row. Its current dated available stock is absent, so its real order quantity
+remains null. An earlier hypothetical zero-stock/factor-1-unit scenario in
+ignored `runtime/verification312.json` is a technical demonstration only.
+That scenario produced raw/recommended 1,547.2717 meters and predicted
+shortage on 2026-09-23; it is **not** a measured stock count or an authorized
+supplier order. Its test approval/export reopened consistently, and the
+original archive's SHA-256 was unchanged.
 
-There is no current IEK stock snapshot, confirmed daily stockout interval,
-anonymized client ID, guaranteed lead time, source participation PDF/DOCX, or
-IEK/Systeme Electric archive in the workspace. Synthetic demonstration is
-separately marked and is not a factual supplier recommendation.
+The sampled 21-day rolling holdout selected seasonal for IEK meters (44.02%
+WAPE, +0.69% signed bias) and packs (33.68%, −19.69%), and mean3 for pieces
+(29.45%, −21.96%). The HGB challenger lost where eligible. These are sampled
+observed-sales errors, not a guarantee. Source-bound automatic selection uses
+only these tested baselines; mismatched input/horizon falls back with a label.
+
+## Release disposition
+
+The deterministic local MVP is launchable and the synthetic approval/export
+workflow is demonstrated. All five case outcomes have implemented code paths,
+but each remains **PARTIAL** for the exact real-world evidence listed in
+[CRITERIA_MATRIX.md](CRITERIA_MATRIX.md). A real Systeme Electric SKU cannot
+be traced until its original file is supplied. IEK needs dated current stock
+and purchase-unit confirmation. Original criteria and generated image were
+not accessible, so direct document/image compliance remains unverified. Live
+organizer-model integration is **BLOCKED** by missing entitlement; mock/router
+tests are not represented as a live call. No supplier dispatch is implemented.

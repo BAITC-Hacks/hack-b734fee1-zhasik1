@@ -14,7 +14,7 @@ class Policy(Contract):
     review_days: int = Field(7, ge=0, le=90)
     buffer_days: int = Field(7, ge=0, le=90)
     category_buffers: dict[str, int] = Field(default_factory=dict)
-    forecast_method: Literal["seasonal", "mean3"] = "seasonal"
+    forecast_method: Literal["auto", "seasonal", "mean3"] = "auto"
     growth_mode: Literal["observed", "file"] = "observed"
     file_growth: float | None = Field(None, ge=-1, le=10)
     eta_shift_days: int = Field(0, ge=0, le=120)

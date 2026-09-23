@@ -37,3 +37,6 @@ uploaded_data/
 sample_data/private/
 *.sqlite
 qor.db
+/.agents/skills/developing-with-streamlit
+/.claude/skills/developing-with-streamlit
+/.playwright-cli/

@@ -27,6 +27,23 @@ def test_split_large_document_is_flagged_as_a_document():
     assert result.candidate.sum()==3
 
 
+def test_anonymized_single_client_spike_is_bounded_until_reviewed():
+    base=events([10]*10+[10000])
+    base["client_id_anonymized"]=["client-regular"]*10+["client-one-off"]
+    flagged=clean_demand(base,as_of=date(2025,1,11))
+    assert flagged.iloc[-1].client_candidate
+    assert flagged.iloc[-1].clean_quantity==10000  # source observation preserved
+    assert flagged.iloc[-1].forecast_quantity < 1000
+    larger=base.copy()
+    larger.loc[larger.index[-1],"quantity"]=100000
+    a,_=monthly_history(base,date(2025,2,1))
+    b,_=monthly_history(larger,date(2025,2,1))
+    pd.testing.assert_series_equal(a,b)  # regular forecast insensitive to spike magnitude
+    keep=dict(event_id="E10",action="keep",decided_at="2025-01-12",actor="manager",reason="Recurring contract confirmed")
+    reviewed=clean_demand(base,decisions=[keep],as_of=date(2025,1,12))
+    assert reviewed.iloc[-1].forecast_quantity==10000
+
+
 def test_sustained_growth_retained_and_no_future_leakage():
     base=events([10]*100+[15]*100)
     full=pd.concat([base,events([100000],"2026-01-01")],ignore_index=True)

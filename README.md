@@ -5,33 +5,45 @@ review, deterministic dated inventory planning, scenarios, versioned manager
 approval, and verified CSV/XLSX export. No API server or supplier dispatch.
 
 **Verified source:** the local `Downloads/IEK.zip` archive. Real Systeme Electric
-files, original case DOCX/rules PDF, and participant model access were not found
+files, the named original case file `Вставленная ​​уценка.md`, and participant model access were not found
 in the searched locations. The built-in SE walkthrough is visibly **synthetic**.
-Live AI is **blocked**, not mocked. See [verified evidence](docs/IMPLEMENTATION_VERIFICATION.md).
+Live AI is **blocked**, not mocked. See [current QA](docs/QA_REPORT.md).
+
+The app opens at `/` with a Russian product overview and a clearly labeled
+static synthetic calculation example. The working Источники, Спрос, Заказы
+and Сценарии views are at `/workspace`. The overview links directly into that workspace. For the current
+product audit and diagrams, see [PRODUCT_AUDIT.md](docs/PRODUCT_AUDIT.md),
+[PRODUCT_AND_ARCHITECTURE.md](docs/PRODUCT_AND_ARCHITECTURE.md),
+[FEATURE_MATRIX.md](docs/FEATURE_MATRIX.md), and
+[DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md). Theme and accessibility tokens are in
+[DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md).
 
 ## Install and run
 
-Python 3.11+; verified on Windows Python 3.14. Existing `.venv` can be reused.
+Target Python 3.12 with the tested pins in `pyproject.toml`. The previous
+Python 3.14 `.venv` remains intact; the clean 3.12 verification environment is
+under ignored `runtime/venv312`. `requirements.txt` delegates to
+`pyproject.toml` and is not a separate dependency list.
 
 Windows PowerShell, from this project directory:
 
 ```powershell
-py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e '.[test]'
-.\.venv\Scripts\python.exe -m streamlit run frontend/app.py --server.address 127.0.0.1 --server.port 8507
-.\.venv\Scripts\python.exe -m pytest -q
+py -3.12 -m venv runtime\venv312
+.\runtime\venv312\Scripts\python.exe -m pip install -e '.[test]'
+.\runtime\venv312\Scripts\python.exe -m streamlit run frontend/app.py --server.address 127.0.0.1 --server.port 8511
+.\runtime\venv312\Scripts\python.exe -m pytest -q
 ```
 
 Linux/macOS (commands provided; not executed on Linux in this audit):
 
 ```bash
-python3 -m venv .venv
+python3.12 -m venv .venv
 .venv/bin/python -m pip install -e '.[test]'
 .venv/bin/python -m streamlit run frontend/app.py --server.address 127.0.0.1
 .venv/bin/python -m pytest -q
 ```
 
-If port 8507 is occupied by the already running app, open it or choose another
+If port 8511 is occupied by the already running app, open it or choose another
 port. Use **frontend/app.py**; root `app.py` and `qor/` are preserved legacy code,
 not the implemented MVP entry point. The frontend explicitly selects `backend/`
 to avoid that legacy package shadowing the editable installation. For standalone
@@ -50,7 +62,8 @@ backend/qor/
   service.py            # shared orchestration for UI and future AI tools
 frontend/
   app.py
-  components/views.py   # Data, Demand, Orders, Scenarios (English UI)
+  app_pages/            # Overview and purchasing-workspace routes
+  components/views.py   # Источники, Спрос, Заказы, Сценарии
 tests/                  # source, forecast, planning, workflow and UI tests
 docs/                   # evidence, model-access audit and demo
 sample_data/            # synthetic/shareable fixtures only, no private originals
@@ -59,6 +72,7 @@ runtime/                # ignored local SQLite/evidence, created at runtime
 pyproject.toml
 README.md
 .gitignore
+.streamlit/config.toml # dark product theme
 ```
 
 ## Input format and privacy
@@ -110,14 +124,22 @@ be replaced with current data for actual purchasing.
    remain missing rather than being invented as zero sales.
 2. Candidate large purchases are flagged at document/day level using only the
    preceding 60 documents (at least 20): log-median plus six log-MADs, with a
-   minimum ten-times-median threshold. They remain included until a dated,
-   reasoned manager exclusion. This is a review heuristic, not a customer claim.
+   minimum ten-times-median threshold. When an anonymized client ID exists,
+   a concentrated one-client document can also be flagged against prior
+   60-day sales. Original and reviewed sales remain visible; an unreviewed
+   candidate is capped only in forecast input. A dated, reasoned manager
+   `keep` or `exclude` decision overrides the cap. Real customer IDs were
+   not supplied, so the client branch is demonstrated with synthetic IDs.
 3. Seasonal forecast uses complete prior years (latest two weighted 25%/75%),
    normalized monthly factors, and a weighted six-month deseasonalized level.
-   Baseline is a three-month mean. Manager selects either method after viewing
-   rolling-origin WAPE and signed bias by supplier/unit. No promised accuracy:
-   the audited real SKU performed worse under the seasonal method. Future data
-   and later review decisions are excluded from earlier origins.
+   Baseline is a three-month mean. `auto` uses a source-fingerprint and horizon
+   matched offline comparison where available, by supplier/unit/intermittency;
+   otherwise it labels a seasonal fallback. The manager can select either
+   baseline explicitly. A local CPU HistGradientBoostingRegressor challenger
+   was trained and evaluated on a real IEK 100-SKU sample, but did not win the
+   held-out gate and is not deployed. See
+   [measured results](docs/FORECAST_EVALUATION.md); no accuracy is promised.
+   Future data and later review decisions are excluded from earlier origins.
 4. Optional confirmed file growth uses the same month one year earlier times
    `(1 + growth)` **once**, never an already grown recent level. Confirmation is
    a manual assumption with provenance in the saved policy, not an auto-read
@@ -183,10 +205,10 @@ is not automatically loaded.
 ## Verification and demo
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\python.exe scripts/verify_project.py --help
-.\.venv\Scripts\python.exe scripts/verify_project.py --iek 'C:\Users\Kuralai\Downloads\IEK.zip' --benchmark 249000 --output runtime/verification.json
-.\.venv\Scripts\python.exe scripts/smoke_real_ui.py
+.\runtime\venv312\Scripts\python.exe -m pytest -q
+.\runtime\venv312\Scripts\python.exe scripts/train_forecast.py --iek 'C:\Users\Kuralai\Downloads\IEK.zip' --max-skus 100
+.\runtime\venv312\Scripts\python.exe scripts/evaluate_forecast.py
+.\runtime\venv312\Scripts\python.exe scripts/smoke_real_ui.py
 ```
 
 Real source evidence and derived traces stay in ignored `runtime/`; do not

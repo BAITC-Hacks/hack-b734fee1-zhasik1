@@ -1,44 +1,30 @@
-# QOR interfaces (Stage 1)
+# Active QOR interfaces
 
-> Historical planned signatures below are not the current API contract.
-> Current implementations: `backend/qor/contracts.py`, `service.calculate_plan`,
-> `data.load_sources`, `demand.forecast_demand`, `planning.recommend_order`,
-> `storage.Repository`. See README and the current verification report.
+The package imported by `frontend/app.py` is `backend/qor/`. The root
+`qor/` remains legacy code and is not the active contract.
 
-## Input and output contracts
+| Function / object | Input → output |
+|---|---|
+| `data.load_sources(sources, supplier=None, snapshot=SNAPSHOT)` | Paths or `(name, bytes, supplier)` tuples → audited `Bundle` |
+| `data.reconcile(bundle)` | Bundle → SKU-month disagreements |
+| `demand.clean_demand(events, decisions=(), as_of=None)` | Transactions → source, reviewed and capped forecast quantities |
+| `demand.forecast_demand(events, snapshot, days, policy, decisions, stockouts, monthly, method)` | Completed history → daily demand and assumptions |
+| `demand.challenger.make_panel(bundle, horizon_days, max_skus)` | Audited bundle → causal SKU-origin experiment rows |
+| `demand.challenger.evaluate_panel(panel)` | Chronological group refits → predictions and method selection metrics |
+| `demand.selection.select_forecast_method(bundle, events, monthly, policy)` | Matching offline JSON evidence → selected baseline or labeled fallback |
+| `planning.recommend_order(...)` | Dated stock, daily demand, inbound, MOQ and pack → explained row |
+| `service.calculate_plan(bundle, policy, *, keys, stock_inputs, decisions, stockouts)` | Shared order calculation → supplier/SKU rows |
+| `storage.Repository(path)` | SQLite runs, input evidence, versions, review, approval and reopened export |
 
-The canonical Pydantic shapes live in `qor/contracts.py`. Every number carries
-the distinction between actual, calculated, assumed, synthetic, and missing.
-`None` represents missing; zero is an explicit value.
+`Policy`, `StockInput`, `Stockout`, `OutlierDecision` and `ToolRequest`
+are Pydantic 2 contracts. `None` means absent, and zero is explicit. The
+source key is supplier + textual SKU; unit mismatches block a row. Purchase
+MOQ and pack multiple are separate inputs. A dated current stock is required
+for an actionable order; historical IEK monthly stock cannot replace it.
 
-Public implementation signatures are intentionally stable:
-
-```text
-load_sources(paths) -> source bundle
-normalize_supplier(raw, supplier) -> normalized tables
-clean_demand(events) -> attributable cleaned history
-forecast_demand(cleaned, scenario) -> ForecastResult[]
-project_inventory(...) -> dated projection
-recommend_order(...) -> OrderRecommendation
-explain_row(recommendation) -> calculation breakdown
-```
-
-## AI provider boundary
-
-The provider interface exposes declared capabilities rather than assuming
-OpenAI. It must state responses/tool/structured output availability, timeouts,
-tool-call limit, provider name, and verification status. Calls can request only
-`inspect_data`, `calculate_plan`, `simulate_policy`, `explain_sku`, and
-`build_order_draft`; results are validated and reconciled to Python outputs.
-
-## Draft state machine
-
-```text
-draft -> review -> approved -> exported
-          ^          |
-          |----------| (manager correction creates a new version)
-```
-
-Only a responsible manager can move a draft to review or approve it. Export
-requires `approved`; export never dispatches to a supplier. Each transition
-records the run ID, manager, reason where applicable, timestamp, and version.
+The workflow is import → demand → forecast → dated planning → persisted
+draft → reasoned edit → manager review → approval → verified CSV/XLSX export.
+An edit returns the run to draft. Export reads the latest approved version.
+No supplier transmission exists. `qor.ai.ToolRouter` exposes only
+`inspect_data`, `calculate_plan`, `simulate_policy` and `explain_sku`;
+the model provider is unverified and has no write/approval/dispatch tool.

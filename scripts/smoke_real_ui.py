@@ -20,6 +20,7 @@ def main():
         with tempfile.TemporaryDirectory(prefix="qor-ui-verification-") as temp:
             os.environ["QOR_DB_PATH"]=str(Path(temp)/"qor.sqlite3")
             app=AppTest.from_file(str(root/"frontend"/"app.py"),default_timeout=90).run()
+            app.switch_page("app_pages/workspace.py").run()
             app.text_input(key="actor").set_value("Local UI test; no order approval")
             app.button(key="load_iek").click().run()
             healthy(app)

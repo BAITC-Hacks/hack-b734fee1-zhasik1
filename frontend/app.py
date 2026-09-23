@@ -1,4 +1,4 @@
-"""QOR manager application: one process, reusable backend calculations."""
+"""QOR application entry point: public product page and purchasing workspace."""
 
 from pathlib import Path
 import sys
@@ -21,9 +21,25 @@ if loaded_qor and not str(getattr(loaded_qor, "__file__", "")).startswith(str(BA
 FRONTEND_DIR = Path(__file__).resolve().parent
 if str(FRONTEND_DIR) not in sys.path:
     sys.path.insert(1, str(FRONTEND_DIR))
-from components.views import render
+from qor.contracts import Policy
 
 
-st.set_page_config(page_title="QOR — Supplier Replenishment", layout="wide")
-st.title("QOR — Supplier Replenishment")
-render()
+st.set_page_config(
+    page_title="QOR — Закупки без догадок",
+    page_icon=":material/inventory_2:",
+    layout="wide",
+    initial_sidebar_state="auto",
+)
+
+# These values belong to the visitor's workspace and survive navigation.
+st.session_state.setdefault("bundle", None)
+st.session_state.setdefault("policy", Policy().model_dump(mode="json"))
+
+page = st.navigation(
+    [
+        st.Page("app_pages/landing.py", title="Главная", icon=":material/home:", url_path="", default=True),
+        st.Page("app_pages/workspace.py", title="Закупки", icon=":material/inventory_2:", url_path="workspace"),
+    ],
+    position="top",
+)
+page.run()

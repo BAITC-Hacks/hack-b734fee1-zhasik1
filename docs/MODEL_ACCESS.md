@@ -54,7 +54,8 @@ would not verify participant access and would violate the no-guessing gate.
 
 ## Deferred smoke test
 
-`scripts/model_probe.py` is a safe, provider-neutral HTTP probe. It reads
+`scripts/model_probe.py` is a preliminary Responses-shaped HTTP probe, not
+a verified provider-neutral adapter. It reads
 `QOR_MODEL_ENDPOINT`, `QOR_MODEL_ID`, and `QOR_MODEL_API_KEY` only from the
 environment and redacts credentials. It has no default endpoint or model ID.
 Once the organizer supplies an OpenAI Responses entitlement, install the
@@ -65,11 +66,11 @@ the SHA-256 hash of the answer, never the key or private spreadsheets.
 
 ## Planned application adapter
 
-The later `qor.ai` adapter will declare provider capabilities (responses,
-structured-output/tool calling, timeout and limits). It will expose only
-`inspect_data`, `calculate_plan`, `simulate_policy`, `explain_sku`, and
-`build_order_draft`. Deterministic Python remains authoritative for all order
-quantities; the model cannot approve, export, or dispatch an order.
+The current `qor.ai` deterministic router declares capabilities and exposes
+only `inspect_data`, `calculate_plan`, `simulate_policy` and `explain_sku`.
+It has no verified live provider. Deterministic Python remains authoritative
+for all order quantities; an eventual model must not approve, export or
+dispatch an order.
 
 ## Smoke-test result
 

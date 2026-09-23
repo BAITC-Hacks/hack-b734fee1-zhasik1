@@ -1,7 +1,1 @@
-pydantic>=2.0,<3.0
-pandas>=2.2
-numpy>=1.26
-openpyxl>=3.1
-streamlit>=1.57
-plotly>=5.0
-pytest>=8.0
+-e .[test]

@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from qor.contracts import Policy, StockInput, KEY
 from qor.demand import forecast_demand
+from qor.demand.selection import select_forecast_method
 from qor.planning import recommend_order
 
 def item_catalog(bundle):
@@ -81,14 +82,16 @@ def calculate_plan(bundle, policy, *, keys=None, stock_inputs=(), decisions=(), 
         if buffer != policy.buffer_days:
             assumptions.append(f"Category {category}: buffer {buffer} days")
         history = sales.get(key, bundle.sales.iloc[:0])
-        forecast = forecast_demand(history,bundle.snapshot,policy.lead_days+policy.review_days+buffer,policy,decisions,(stockouts or {}).get(key,()),months.get(key))
+        selected_method, selection_notes = select_forecast_method(bundle, history, months.get(key), policy,
+                                                                   decisions=decisions, stockouts=(stockouts or {}).get(key,()))
+        forecast = forecast_demand(history,bundle.snapshot,policy.lead_days+policy.review_days+buffer,policy,decisions,(stockouts or {}).get(key,()),months.get(key),method=selected_method)
         if forecast["daily"].demand.isna().any():
             row.update(urgency="needs_demand_input",assumptions=forecast["assumptions"]+["Insufficient observed demand / prior-year growth base"])
             rows.append(row)
             continue
         result = recommend_order(**item,snapshot_date=bundle.snapshot,free_stock=stock,stock_date=_optional(st.get("as_of")),demand=forecast["daily"].demand.tolist(),inbound=inbound,lead_days=policy.lead_days,review_days=policy.review_days,buffer_days=buffer,moq=moq,pack_multiple=pack,reserved=_optional(st.get("reserved")))
         result.update(article=str(rule.get("article") or ""), category=category, source_stock=st.get("source"), source_policy=rule.get("source"), forecast_method=forecast["method"], candidate_count=forecast["candidate_count"], forecast_history={str(k): None if pd.isna(v) else float(v) for k,v in forecast["history"].items()}, source_sales=history.source.head(5).tolist(), provenance="synthetic" if not history.empty and set(history.provenance)=={"synthetic"} else "actual sources / calculated recommendation")
-        result["assumptions"] += forecast["assumptions"] + assumptions
+        result["assumptions"] += forecast["assumptions"] + selection_notes + assumptions
         result["assumptions"].append("MOQ absent: no minimum enforced" if moq is None else f"Minimum order: {moq}")
         result["assumptions"].append("Pack multiple absent: fractional quantities possible; manager review required" if pack is None else f"Pack multiple: {pack}")
         rows.append(result)
