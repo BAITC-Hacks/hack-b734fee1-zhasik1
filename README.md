@@ -18,6 +18,24 @@ product audit and diagrams, see [PRODUCT_AUDIT.md](docs/PRODUCT_AUDIT.md),
 [DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md). Theme and accessibility tokens are in
 [DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md).
 
+## Demo release and online deployment
+
+The demo release is tagged **v0.1.0-demo**. GitHub Actions runs the automated
+test suite for pushes and pull requests. A tag matching **v*** creates a GitHub
+Release from the checked-in release notes.
+
+Streamlit Community Cloud deployment coordinates:
+
+| Setting | Value |
+|---|---|
+| Repository | **BAITC-Hacks/hack-b734fee1-zhasik1** |
+| Branch | **main** |
+| Main file path | **frontend/app.py** |
+| Python | **3.12** |
+
+No application secrets are required. See [DEPLOYMENT.md](docs/DEPLOYMENT.md)
+for the one-time account setup, operating limits, and verification checklist.
+
 ## Install and run
 
 Target Python 3.12 with the tested pins in `pyproject.toml`. The previous
